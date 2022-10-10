@@ -6,11 +6,11 @@
 (defvar *inputpathname* "")
 (defvar *inputlines* nil)
 (defvar *outputlines* nil)
-					; make a list of all instruction types
+; make a list of all instruction types
 (defparameter *instructiontypes* (list (cons 'rtype '("add" "addu" "and" "jr" "nor" "or" "slt" "sltu" "sll" "srl" "sub" "subu"))
                                        (cons 'itype '("addi" "addiu" "andi" "beq" "bne" "lbu" "lhu" "ll" "lui" "lw" "ori" "slti" "sltiu" "sb" "sc" "sh" "sw"))
                                        (cons 'jtype '("j" "jal"))))
-					; map instructions to opcodes and function codes
+; map instructions to opcodes and function codes
 (defparameter *opcodemap* '((add (#X0 #X20)) (addu (#X0 #X21)) (and (#X0 #X24)) (jr (#X0 #X08)) (nor (#X0 #X27)) (or (#X0 #X25)) (slt (#X0 #X2A)) (sltu (#X0 #X2B)) (sll (#X0 #X00)) (srl (#X0 #X02)) (sub (#X0 #X22)) (subu (#X0 #X23))
                             (addi #X8) (addiu #X9) (andi #XC) (beq #X4) (bne #X5) (lbu #X24) (lhu #X25) (ll #X30) (lui #XF) (lw #X23) (ori #XD) (slti #XA) (sltiu #XB) (sb #X28) (sc #X38) (sh #X29) (sw #X2B)
                             (j #X2) (jal #X3)))
@@ -46,12 +46,12 @@
                   (exit :CODE 1))))
 
 (defun pass1 (input)
-					; since pseudo-instructions aren't part of the mips core instruction set, we (probably?) don't have to deal with them.
-					; if that functionality were to be added, it would be before the labels are processed
-					;
-					; the output of this function is a list of two lists,
-					; where the first is the instructions to be processed (minus the labels),
-					; and the second is the 'symbol table', where the labels are associated with a memory address in decimal
+; since pseudo-instructions aren't part of the mips core instruction set, we (probably?) don't have to deal with them.
+; if that functionality were to be added, it would be before the labels are processed
+;
+; the output of this function is a list of two lists,
+; where the first is the instructions to be processed (minus the labels),
+; and the second is the 'symbol table', where the labels are associated with a memory address in decimal
   (loop for x in input
         for y from 0
         if (equal (cdr x) 'label)
@@ -96,6 +96,7 @@
 
 (defun itype->machinecode (x)
   ;TODO: separate case for sw/lw style instructions that don't follow the standard format
+  ;TODO: another separate case for beq/bne instructions that use a label for the immediate
   (list
    ;opcode
    (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))
@@ -117,14 +118,14 @@
    ))
 
 (defun pass2 (input)
-					; convert the input to machine code.
-					; the input is a list of two lists, where the first is the instructions, and the second is the 'symbol table'
-					;
-					; need special cases for instructions with labels (beq and bne come to mind) to convert labels.
-					; otherwise, probably as simple as looking up the machine code translation
-					; in a defined parameter or file, and simply outputting it.
+; convert the input to machine code.
+; the input is a list of two lists, where the first is the instructions, and the second is the 'symbol table'
+;
+; need special cases for instructions with labels (beq and bne come to mind) to convert labels.
+; otherwise, probably as simple as looking up the machine code translation
+; in a defined parameter or file, and simply outputting it.
 
-                                        ; loop over the instructions
+; loop over the instructions
   (loop for x in (car input)
         when (eq (cdr x) 'rtype)
           collect (rtype->machinecode x)
@@ -132,15 +133,15 @@
           collect (itype->machinecode x)
         when (eq (cdr x) 'jtype)
           collect (jtype->machinecode x)))
-					;(loop for x in (car input)
-					;      for y from 0
-					;      if (assoc y (car (cdr input)))
-					;        collect (cons (cdr (assoc (read-from-string (car (car x))) *opcodemap*)) (cdr (assoc y (car (cdr input)))))
-					;      else
-					;        collect (cons (cdr (assoc (read-from-string (car (car x))) *opcodemap*)) y)))
+;(loop for x in (car input)
+;      for y from 0
+;      if (assoc y (car (cdr input)))
+;        collect (cons (cdr (assoc (read-from-string (car (car x))) *opcodemap*)) (cdr (assoc y (car (cdr input)))))
+;      else
+;        collect (cons (cdr (assoc (read-from-string (car (car x))) *opcodemap*)) y)))
 
 (defun machinecode->file (input outfile)
-					; finally, place the decoded machine code into a specified output file
+; finally, place the decoded machine code into a specified output file
   )
 
 ;; script portion
@@ -154,8 +155,8 @@
 
 (readinputfile (car (uiop:command-line-arguments)))
 
-					;(print *inputlines*)
-					;(print (processinputlist *inputlines*))
-					;(print (pass1 (processinputlist *inputlines*)))
+;(print *inputlines*)
+;(print (processinputlist *inputlines*))
+;(print (pass1 (processinputlist *inputlines*)))
 (print (pass2 (pass1 (processinputlist *inputlines*))))
 (format nil (format nil "~~~D,'0b ~~~D,'0b" 8 4) 1 3)
