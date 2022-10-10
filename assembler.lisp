@@ -23,8 +23,9 @@
   (let ((in (open filename :if-does-not-exist nil)))
     (when in
       (loop for line = (read-line in nil)
-            while line do (setf *inputlines* (push
-                                              (remove "" (uiop:split-string (string-left-trim *whitespaces* (substitute #\Space #\, line)) :separator " ") :test #'string=) *inputlines*)))
+            while line do (setf *inputlines*
+                                (push
+                                 (remove "" (uiop:split-string (string-left-trim *whitespaces* (substitute #\Space #\, line)) :separator " ") :test #'string=) *inputlines*)))
       (close in)))
   (delete NIL *inputlines*)
   (setf *inputlines* (reverse *inputlines*)))
@@ -53,9 +54,9 @@
 ; where the first is the instructions to be processed (minus the labels),
 ; and the second is the 'symbol table', where the labels are associated with a memory address in decimal
   (loop for x in input
-        for y from 0
+        for y from 1
         if (equal (cdr x) 'label)
-          collect (cons y (car x)) into symboltable
+          collect (cons (read-from-string (remove #\: (car (car x)))) y) into symboltable
           and do (setf y (- y 1)) ;make sure that subsequent label-line mappings aren't offset
         else
           collect x into instructions
@@ -64,18 +65,18 @@
 (defun rtype->machinecode (x)
   ; converts the input list to machine code for an rtype instruction
 
-  (cond ((or (eq (car (car x)) "sll") (eq (car (car x)) "srl")) ; check for shifts, and translate them accordingly
+  (cond ((or (string= (car (car x)) "sll") (string= (car (car x)) "srl")) ; check for shifts, and translate them accordingly
          (list
           ;opcode
           (car (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*))))
           ;rs
           0
           ;rt
-          (car (cdr (assoc (read-from-string (car (cdr (cdr (cdr (car x)))))) *registermap*)))
+          (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*)))
           ;rd
           (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
           ;sh
-          0
+          (read-from-string (car (cdr (cdr (cdr (car x))))))
           ;func
           (car (cdr (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))))))
         (t ; catch-all case, for everything other than a shift
@@ -93,25 +94,42 @@
           ;func
           (car (cdr (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))))))))
 
-(defun itype->machinecode (x)
-  ;TODO: another separate case for beq/bne instructions that use a label for the immediate
+(defun itype->machinecode (x pos symboltable)
     (cond ((or (string= (car (car x)) "lb") (string= (car (car x)) "lbu") (string= (car (car x)) "lh") (string= (car (car x)) "lhu")
                                             (string= (car (car x)) "lw") (string= (car (car x)) "sb") (string= (car (car x)) "sh")
                                             (string= (car (car x)) "sw") (string= (car (car x)) "ll") (string= (car (car x)) "sc"))
          (list
           ;opcode
+          (format nil "~6,'0b" (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*))))
+          ;rs
+          (format nil "~5,'0b" (car (cdr (assoc (read-from-string (remove #\) (car (cdr (uiop:split-string (car (cdr (cdr (car x)))) :separator "("))))) *registermap*))))
+          ;rt
+          (format nil "~5,'0b" (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*))))
+          ;imm
+          (format nil "~16,'0b" (read-from-string (car (uiop:split-string (car (cdr (cdr (car x)))) :separator "("))))
+          ))
+        ((string= (car (car x)) "lui")
+         (list
+          ;opcode
           (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))
           ;rs
-          (car (cdr (assoc (read-from-string (remove #\) (car (cdr (uiop:split-string (car (cdr (cdr (car x)))) :separator "("))))) *registermap*)))
+          0
           ;rt
           (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
           ;imm
-          (read-from-string (car (uiop:split-string (car (cdr (cdr (car x)))) :separator "(")))
+          (read-from-string (car (cdr (cdr (car x)))))
           ))
-        ((eq (car (car x)) "lui")
-         (list))
-        ((or (eq (car (car x)) "beq") (eq (car (car x)) "bne"))
-         (list))
+        ((or (string= (car (car x)) "beq") (string= (car (car x)) "bne"))
+         (list
+          ;opcode
+          (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))
+          ;rs
+          (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*)))
+          ;rt
+          (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
+          ;imm, converted from a label to an offset
+          (- (cdr (assoc (read-from-string (car (cdr (cdr (cdr (car x)))))) symboltable)) pos)
+          ))
         (t
          (list
           ;opcode
@@ -121,14 +139,10 @@
           ;rt
           (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
           ;imm
-          (car (cdr (cdr (cdr (car x))))))))
+          (read-from-string (car (cdr (cdr (cdr (car x)))))))))
   )
 
 (defun jtype->machinecode (x)
-  (cond ((or)
-         (list))
-        ((or)
-         (list)))
   (list
    ;opcode
    (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))
@@ -147,22 +161,19 @@
 
 ; loop over the instructions
   (loop for x in (car input)
+        for y from 2 ; since next-pc is relative to the next instruction
         when (eq (cdr x) 'rtype)
           collect (rtype->machinecode x)
         when (eq (cdr x) 'itype)
-          collect (itype->machinecode x)
+          ; make sure to pass the symboltable here so labels can be defined as offsets
+          collect (itype->machinecode x y (car (cdr input)))
         when (eq (cdr x) 'jtype)
           collect (jtype->machinecode x)))
-;(loop for x in (car input)
-;      for y from 0
-;      if (assoc y (car (cdr input)))
-;        collect (cons (cdr (assoc (read-from-string (car (car x))) *opcodemap*)) (cdr (assoc y (car (cdr input)))))
-;      else
-;        collect (cons (cdr (assoc (read-from-string (car (car x))) *opcodemap*)) y)))
 
 (defun machinecode->file (input outfile)
 ; finally, place the decoded machine code into a specified output file
-  )
+  (loop for x in input
+        collect (format nil "~{~A~}" x)))
 
 ;; script portion
 (if (uiop:file-exists-p (car (uiop:command-line-arguments)))
@@ -176,7 +187,7 @@
 (readinputfile (car (uiop:command-line-arguments)))
 
 ;(print *inputlines*)
-;(print (processinputlist *inputlines*))
+(print (processinputlist *inputlines*))
 (print (pass1 (processinputlist *inputlines*)))
 (print (pass2 (pass1 (processinputlist *inputlines*))))
 (format nil (format nil "~~~D,'0b ~~~D,'0b" 8 4) 1 3)

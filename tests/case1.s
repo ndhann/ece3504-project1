@@ -10,9 +10,11 @@ secondlabel:
 	sub  $t1, $t2, $t0
 	subu $t1, $t1, $t0
 	addi $s0, $t1, 0
+	lui $t7, 16
+	srl $t7, $t7, 2
 
 firstlabel:
 	bne $s0, $t1, secondlabel
 
 	sw $s0, 0($zero)
-	j  0x0000
+	j  0
