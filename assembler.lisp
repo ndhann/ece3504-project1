@@ -62,93 +62,149 @@
           collect x into instructions
         finally (return (list instructions symboltable))))
 
+(defun format->opcode (x)
+  (format nil (format nil "~~~D,'0b" 6) (ldb (byte 6 0) x)))
+(defun opcode (x func?)
+  ; if func? is true, treat the instruction as if it has a function code
+  (if func?
+      (car (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*))))
+      (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))))
+
+(defun format->register (x)
+  (format nil (format nil "~~~D,'0b" 5) (ldb (byte 5 0) x)))
+(defun rtype->rt (x sh?)
+  ; if sh? is true, treat x as a shift instruction
+  (if sh?
+      (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*)))
+      (car (cdr (assoc (read-from-string (car (cdr (cdr (cdr (car x)))))) *registermap*)))))
+(defun rtype->rs (x)
+  (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*))))
+(defun rtype->rd (x)
+  (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*))))
+
+(defun rtype->sh (x)
+  (read-from-string (car (cdr (cdr (cdr (car x)))))))
+
+(defun format->func (x)
+  (format nil (format nil "~~~D,'0b" 6) (ldb (byte 6 0) x)))
+(defun rtype->func (x)
+  (car (cdr (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*))))))
+
 (defun rtype->machinecode (x)
   ; converts the input list to machine code for an rtype instruction
 
   (cond ((or (string= (car (car x)) "sll") (string= (car (car x)) "srl")) ; check for shifts, and translate them accordingly
          (list
           ;opcode
-          (car (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*))))
+          (format->opcode (opcode x t))
           ;rs
-          0
+          (format->register 0)
           ;rt
-          (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*)))
+          (format->register (rtype->rt x t))
           ;rd
-          (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
+          (format->register (rtype->rd x))
           ;sh
-          (read-from-string (car (cdr (cdr (cdr (car x))))))
+          (format->register (rtype->rs x))
           ;func
-          (car (cdr (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))))))
+          (format->func (rtype->func x))))
         (t ; catch-all case, for everything other than a shift
          (list
           ;opcode
-          (car (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*))))
+          (format->opcode (opcode x t))
           ;rs
-          (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*)))
+          (format->register (rtype->rs x))
           ;rt
-          (car (cdr (assoc (read-from-string (car (cdr (cdr (cdr (car x)))))) *registermap*)))
+          (format->register (rtype->rt x nil))
           ;rd
-          (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
+          (format->register (rtype->rd x))
           ;sh
-          0
+          (format->register 0)
           ;func
-          (car (cdr (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))))))))
+          (format->func (rtype->func x))))))
+
+(defun itype->rs (x ls?)
+  ;if ls? is true, treat x as a load/store related function
+  (if ls?
+      (car (cdr (assoc (read-from-string (remove #\) (car (cdr (uiop:split-string (car (cdr (cdr (car x)))) :separator "("))))) *registermap*)))
+      (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*)))))
+(defun itype->rt (x)
+  (rtype->rd x))
+
+(defun format->immediate (x)
+  (format nil (format nil "~~~D,'0b" 16) (ldb (byte 16 0) x)))
+(defun itype->immediate (x type pos symboltable)
+  ;depending on the value of type, treat x as a different kind of instruction with an immediate
+  (cond ((eq type 'ls)
+         (read-from-string (car (uiop:split-string (car (cdr (cdr (car x)))) :separator "("))))
+        ((eq type 'lui)
+         (read-from-string (car (cdr (cdr (car x))))))
+        ((eq type 'b)
+         (- (cdr (assoc (read-from-string (car (cdr (cdr (cdr (car x)))))) symboltable)) pos))
+        (t
+         (read-from-string (car (cdr (cdr (cdr (car x)))))))))
 
 (defun itype->machinecode (x pos symboltable)
-    (cond ((or (string= (car (car x)) "lb") (string= (car (car x)) "lbu") (string= (car (car x)) "lh") (string= (car (car x)) "lhu")
+    (let ((instr (car (car x))))
+      (cond ((or (string= (car (car x)) "lb") (string= (car (car x)) "lbu") (string= (car (car x)) "lh") (string= (car (car x)) "lhu")
                                             (string= (car (car x)) "lw") (string= (car (car x)) "sb") (string= (car (car x)) "sh")
                                             (string= (car (car x)) "sw") (string= (car (car x)) "ll") (string= (car (car x)) "sc"))
          (list
           ;opcode
-          (format nil "~6,'0b" (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*))))
+          (format->opcode (opcode x nil))
           ;rs
-          (format nil "~5,'0b" (car (cdr (assoc (read-from-string (remove #\) (car (cdr (uiop:split-string (car (cdr (cdr (car x)))) :separator "("))))) *registermap*))))
+          (format->register (itype->rs x t))
           ;rt
-          (format nil "~5,'0b" (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*))))
+          (format->register (itype->rt x))
           ;imm
-          (format nil "~16,'0b" (read-from-string (car (uiop:split-string (car (cdr (cdr (car x)))) :separator "("))))
+          (format->immediate (itype->immediate x 'ls nil nil))
           ))
         ((string= (car (car x)) "lui")
          (list
           ;opcode
-          (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))
+          (format->opcode (opcode x nil))
           ;rs
-          0
+          (format->register 0)
           ;rt
-          (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
+          (format->register (itype->rt x))
           ;imm
-          (read-from-string (car (cdr (cdr (car x)))))
+          (format->immediate (itype->immediate x 'lui nil nil))
           ))
         ((or (string= (car (car x)) "beq") (string= (car (car x)) "bne"))
          (list
           ;opcode
-          (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))
+          (format->opcode (opcode x nil))
           ;rs
-          (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*)))
+          (format->register (itype->rs x nil))
           ;rt
-          (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
+          (format->register (itype->rt x))
           ;imm, converted from a label to an offset
-          (- (cdr (assoc (read-from-string (car (cdr (cdr (cdr (car x)))))) symboltable)) pos)
+          (format->immediate (itype->immediate x 'b pos symboltable))
           ))
         (t
          (list
           ;opcode
-          (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))
+          (format->opcode (opcode x nil))
           ;rs
-          (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*)))
+          (format->register (itype->rs x nil))
           ;rt
-          (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
+          (format->register (itype->rt x))
           ;imm
-          (read-from-string (car (cdr (cdr (cdr (car x)))))))))
-  )
+          (format->immediate (itype->immediate x t nil nil))
+          )))
+  ))
+
+(defun format->addr (x)
+  (format nil (format nil "~~~D,'0b" 26) (ldb (byte 26 0) x)))
+(defun jtype->addr (x)
+  (read-from-string (car (cdr (car x)))))
 
 (defun jtype->machinecode (x)
   (list
    ;opcode
-   (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))
+   (format->opcode (opcode x nil))
    ;address
    ;TODO: might need some logic to determine whether it's hexadecimal or not
-   (read-from-string (car (cdr (car x))))
+   (format->addr (jtype->addr x))
    ))
 
 (defun pass2 (input)
@@ -172,8 +228,14 @@
 
 (defun machinecode->file (input outfile)
 ; finally, place the decoded machine code into a specified output file
-  (loop for x in input
-        collect (format nil "~{~A~}" x)))
+  (let ((out (open outfile :if-does-not-exist :create :direction :output :if-exists :overwrite)))
+    (when out
+      (loop for x in input
+            do (format out "~8,'0X~%" (parse-integer (format nil "~{~A~}" x) :radix 2)))
+      (close out)))
+  ;(loop for x in input
+  ;      collect (format nil "~8,'0X" (parse-integer (format nil "~{~A~}" x) :radix 2)))
+  )
 
 ;; script portion
 (if (uiop:file-exists-p (car (uiop:command-line-arguments)))
@@ -186,8 +248,5 @@
 
 (readinputfile (car (uiop:command-line-arguments)))
 
-;(print *inputlines*)
-(print (processinputlist *inputlines*))
-(print (pass1 (processinputlist *inputlines*)))
-(print (pass2 (pass1 (processinputlist *inputlines*))))
-(format nil (format nil "~~~D,'0b ~~~D,'0b" 8 4) 1 3)
+(machinecode->file (pass2 (pass1 (processinputlist *inputlines*)))
+                   (concatenate 'string (pathname-name *inputpathname*) ".obj"))
