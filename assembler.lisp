@@ -55,60 +55,80 @@
   (loop for x in input
         for y from 0
         if (equal (cdr x) 'label)
-        collect (cons y (car x)) into symboltable
+          collect (cons y (car x)) into symboltable
+          and do (setf y (- y 1)) ;make sure that subsequent label-line mappings aren't offset
         else
-        collect x into instructions
+          collect x into instructions
         finally (return (list instructions symboltable))))
 
 (defun rtype->machinecode (x)
   ; converts the input list to machine code for an rtype instruction
-  (if (or (eq (car (car x)) "sll")
-          (eq (car (car x)) "srl"))
-      (progn
-        (list
-         ;opcode
-         (car (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*))))
-         ;rs
-         0
-         ;rt
-         (car (cdr (assoc (read-from-string (car (cdr (cdr (cdr (car x)))))) *registermap*)))
-         ;rd
-         (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
-         ;sh
-         0
-         ;func
-         (car (cdr (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))))
-         ))
-      (progn
-        (list
-         ;opcode
-         (car (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*))))
-         ;rs
-         (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*)))
-         ;rt
-         (car (cdr (assoc (read-from-string (car (cdr (cdr (cdr (car x)))))) *registermap*)))
-         ;rd
-         (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
-         ;sh
-         0
-         ;func
-         (car (cdr (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))))))))
+
+  (cond ((or (eq (car (car x)) "sll") (eq (car (car x)) "srl")) ; check for shifts, and translate them accordingly
+         (list
+          ;opcode
+          (car (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*))))
+          ;rs
+          0
+          ;rt
+          (car (cdr (assoc (read-from-string (car (cdr (cdr (cdr (car x)))))) *registermap*)))
+          ;rd
+          (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
+          ;sh
+          0
+          ;func
+          (car (cdr (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))))))
+        (t ; catch-all case, for everything other than a shift
+         (list
+          ;opcode
+          (car (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*))))
+          ;rs
+          (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*)))
+          ;rt
+          (car (cdr (assoc (read-from-string (car (cdr (cdr (cdr (car x)))))) *registermap*)))
+          ;rd
+          (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
+          ;sh
+          0
+          ;func
+          (car (cdr (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))))))))
 
 (defun itype->machinecode (x)
-  ;TODO: separate case for sw/lw style instructions that don't follow the standard format
   ;TODO: another separate case for beq/bne instructions that use a label for the immediate
-  (list
-   ;opcode
-   (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))
-   ;rs
-   (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*)))
-   ;rt
-   (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
-   ;imm
-   (car (cdr (cdr (cdr (car x)))))
-   ))
+    (cond ((or (string= (car (car x)) "lb") (string= (car (car x)) "lbu") (string= (car (car x)) "lh") (string= (car (car x)) "lhu")
+                                            (string= (car (car x)) "lw") (string= (car (car x)) "sb") (string= (car (car x)) "sh")
+                                            (string= (car (car x)) "sw") (string= (car (car x)) "ll") (string= (car (car x)) "sc"))
+         (list
+          ;opcode
+          (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))
+          ;rs
+          (car (cdr (assoc (read-from-string (remove #\) (car (cdr (uiop:split-string (car (cdr (cdr (car x)))) :separator "("))))) *registermap*)))
+          ;rt
+          (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
+          ;imm
+          (read-from-string (car (uiop:split-string (car (cdr (cdr (car x)))) :separator "(")))
+          ))
+        ((eq (car (car x)) "lui")
+         (list))
+        ((or (eq (car (car x)) "beq") (eq (car (car x)) "bne"))
+         (list))
+        (t
+         (list
+          ;opcode
+          (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))
+          ;rs
+          (car (cdr (assoc (read-from-string (car (cdr (cdr (car x))))) *registermap*)))
+          ;rt
+          (car (cdr (assoc (read-from-string (car (cdr (car x)))) *registermap*)))
+          ;imm
+          (car (cdr (cdr (cdr (car x))))))))
+  )
 
 (defun jtype->machinecode (x)
+  (cond ((or)
+         (list))
+        ((or)
+         (list)))
   (list
    ;opcode
    (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*)))
@@ -157,6 +177,6 @@
 
 ;(print *inputlines*)
 ;(print (processinputlist *inputlines*))
-;(print (pass1 (processinputlist *inputlines*)))
+(print (pass1 (processinputlist *inputlines*)))
 (print (pass2 (pass1 (processinputlist *inputlines*))))
 (format nil (format nil "~~~D,'0b ~~~D,'0b" 8 4) 1 3)
