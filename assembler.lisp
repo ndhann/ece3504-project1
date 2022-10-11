@@ -90,6 +90,11 @@
 (defun rtype->func (x)
   (car (cdr (car (cdr (assoc (read-from-string (car (car x))) *opcodemap*))))))
 
+(defun format->sh (x)
+  (format->register x))
+(defun rtype->sh (x)
+  (read-from-string (car (cdr (cdr (cdr (car x)))))))
+
 (defun rtype->machinecode (x)
   ; converts the input list to machine code for an rtype instruction
 
@@ -104,7 +109,7 @@
           ;rd
           (format->register (rtype->rd x))
           ;sh
-          (format->register (rtype->rs x))
+          (format->sh (rtype->sh x))
           ;func
           (format->func (rtype->func x))))
         (t ; catch-all case, for everything other than a shift
@@ -173,10 +178,10 @@
          (list
           ;opcode
           (format->opcode (opcode x nil))
-          ;rs
-          (format->register (itype->rs x nil))
           ;rt
           (format->register (itype->rt x))
+          ;rs
+          (format->register (itype->rs x nil))
           ;imm, converted from a label to an offset
           (format->immediate (itype->immediate x 'b pos symboltable))
           ))
@@ -229,7 +234,7 @@
 (defun machinecode->file (input outfile)
 ; finally, place the decoded machine code into a specified output file
 
-  (with-open-file (stream outfile :direction :output :if-does-not-exist :create :if-exists :overwrite)
+  (with-open-file (stream outfile :direction :output :if-does-not-exist :create :if-exists :supersede)
     (loop for x in input
           do (format stream "~8,'0X~%" (parse-integer (format nil "~{~A~}" x) :radix 2)))))
 
