@@ -6,6 +6,7 @@
 (defvar *inputpathname* "")
 (defvar *inputlines* nil)
 (defvar *outputlines* nil)
+(defvar *error-p* nil)
 ; make a list of all instruction types
 (defparameter *instructiontypes* (list (cons 'rtype '("add" "addu" "and" "jr" "nor" "or" "slt" "sltu" "sll" "srl" "sub" "subu"))
                                        (cons 'itype '("addi" "addiu" "andi" "beq" "bne" "lbu" "lhu" "ll" "lui" "lw" "ori" "slti" "sltiu" "sb" "sc" "sh" "sw"))
@@ -43,8 +44,8 @@
         else if (member (car x) (cdr (car (cdr (cdr types)))) :test #'string=)
         collect (cons x 'jtype)
         else
-        do (progn (print (concatenate 'string "Undefined function " (car x) " found on line " (write-to-string y) ", aborting"))
-                  (exit :CODE 1))))
+        do (progn (print (concatenate 'string "Undefined function " (car x) " found on line " (write-to-string y)))
+                  (setf *error-p* t))))
 
 (defun pass1 (input)
 ; since pseudo-instructions aren't part of the mips core instruction set, we (probably?) don't have to deal with them.
@@ -53,6 +54,10 @@
 ; the output of this function is a list of two lists,
 ; where the first is the instructions to be processed (minus the labels),
 ; and the second is the 'symbol table', where the labels are associated with a memory address in decimal
+
+  ; check to make sure there's no errors in the file
+  (if *error-p*
+      (exit :CODE 1))
   (loop for x in input
         for y from 1
         if (equal (cdr x) 'label)
@@ -239,21 +244,15 @@
           do (format stream "~8,'0X~%" (parse-integer (format nil "~{~A~}" x) :radix 2)))))
 
 ;; script portion
-(if (uiop:file-exists-p (car (uiop:command-line-arguments)))
-    (setf *inputpathname* (pathname (car (uiop:command-line-arguments)))))
+(defun main ()
+  (if (uiop:file-exists-p (car (uiop:command-line-arguments)))
+      (setf *inputpathname* (pathname (car (uiop:command-line-arguments)))))
 
-(if (eq (uiop:file-exists-p *inputpathname*) nil)
-    (progn
-      (print "provide a valid .s file")
-      (exit :CODE 1)))
+  (if (eq (uiop:file-exists-p *inputpathname*) nil)
+      (progn
+        (print "provide a valid .s file")
+        (exit :CODE 1)))
 
-(readinputfile (car (uiop:command-line-arguments)))
-
-;(print *inputlines*)
-;(print (processinputlist *inputlines*))
-;(print (pass1 (processinputlist *inputlines*)))
-;(print (pass2 (pass1 (processinputlist *inputlines*))))
-
-(machinecode->file (pass2 (pass1 (processinputlist *inputlines*)))
-                   (concatenate 'string (pathname-name *inputpathname*) ".obj"))
-
+  (readinputfile (car (uiop:command-line-arguments)))
+  (machinecode->file (pass2 (pass1 (processinputlist *inputlines*)))
+                     (concatenate 'string (pathname-name *inputpathname*) ".obj")))
