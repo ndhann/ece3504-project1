@@ -25,7 +25,7 @@
       (loop for line = (read-line in nil)
             while line do (setf *inputlines*
                                 (push
-                                 (remove "" (uiop:split-string (string-left-trim *whitespaces* (substitute #\Space #\, line)) :separator " ") :test #'string=) *inputlines*)))
+                                 (remove "" (uiop:split-string (substitute-if #\Space (lambda (x) (member x *whitespaces*)) line) :separator " ") :test #'string=) *inputlines*)))
       (close in)))
   (delete NIL *inputlines*)
   (setf *inputlines* (reverse *inputlines*)))
@@ -228,14 +228,10 @@
 
 (defun machinecode->file (input outfile)
 ; finally, place the decoded machine code into a specified output file
-  (let ((out (open outfile :if-does-not-exist :create :direction :output :if-exists :overwrite)))
-    (when out
-      (loop for x in input
-            do (format out "~8,'0X~%" (parse-integer (format nil "~{~A~}" x) :radix 2)))
-      (close out)))
-  ;(loop for x in input
-  ;      collect (format nil "~8,'0X" (parse-integer (format nil "~{~A~}" x) :radix 2)))
-  )
+
+  (with-open-file (stream outfile :direction :output :if-does-not-exist :create :if-exists :overwrite)
+    (loop for x in input
+          do (format stream "~8,'0X~%" (parse-integer (format nil "~{~A~}" x) :radix 2)))))
 
 ;; script portion
 (if (uiop:file-exists-p (car (uiop:command-line-arguments)))
@@ -248,5 +244,11 @@
 
 (readinputfile (car (uiop:command-line-arguments)))
 
+;(print *inputlines*)
+;(print (processinputlist *inputlines*))
+;(print (pass1 (processinputlist *inputlines*)))
+;(print (pass2 (pass1 (processinputlist *inputlines*))))
+
 (machinecode->file (pass2 (pass1 (processinputlist *inputlines*)))
                    (concatenate 'string (pathname-name *inputpathname*) ".obj"))
+
